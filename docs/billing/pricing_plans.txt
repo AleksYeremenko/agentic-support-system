@@ -1,0 +1,5 @@
+We offer two main tiers:
+
+    Basic Plan: $20 per month, includes up to 10,000 API calls.
+
+    Pro Plan: $50 per month, includes unlimited API calls and priority support. Annual billing offers a 15% discount on both plans.

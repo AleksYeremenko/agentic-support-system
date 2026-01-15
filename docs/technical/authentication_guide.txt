@@ -1,0 +1,6 @@
+AUTHENTICATION PROTOCOLS:
+- Login: Use the /auth endpoint with your credentials to receive a JWT Bearer Token.
+- Token Expiry: Tokens expire every 120 minutes for security reasons.
+- Multi-Factor Authentication: We support 2FA via mobile apps (Google Authenticator).
+- Password Reset: If you forget your password, navigate to the 'Security' section or use the /password-reset endpoint.
+- Reset link stays active for 30 minutes.

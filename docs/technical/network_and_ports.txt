@@ -1,0 +1,6 @@
+NETWORK CONFIGURATION:
+- HTTPS: Our services strictly use Port 443 for secure communication.
+- SSH: For server management, Port 22 is used (restricted to internal IP addresses).
+- API Access: Ensure your firewall allows outbound traffic to 'api.inksoftware.house'.
+- VPN: Remote access to staging environments requires the corporate OpenVPN client.
+- DNS: Our primary name servers are ns1.inksoftware.house and ns2.inksoftware.house.

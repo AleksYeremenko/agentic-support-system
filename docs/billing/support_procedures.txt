@@ -1,0 +1,5 @@
+INTERNAL SUPPORT PROCEDURES:
+- Priority Level: High priority is reserved for billing discrepancies and total system outages. Medium is for general technical questions.
+- Ticket Information: Every ticket must include a Subject and a Priority level.
+- Escalation: If a refund is outside the 14-day window, the ticket must be escalated to a Senior Billing Manager.
+- Response Time: Our goal is to respond to all tickets within 24 business hours.

@@ -1,0 +1,6 @@
+COMMON ERROR CODES AND SOLUTIONS:
+- 401 Unauthorized: Your token is invalid or expired. Please login again or refresh your token.
+- 403 Forbidden: You do not have permission for this resource (e.g., trying to access Pro features on a Basic plan).
+- 429 Too Many Requests: You have exceeded your rate limit. Wait 60 seconds.
+- 500 Internal Server Error: This is an issue on our side. Check the @SystemStatus Twitter for updates.
+- 503 Service Unavailable: The server is down for maintenance.
