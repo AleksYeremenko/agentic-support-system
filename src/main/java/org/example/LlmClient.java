@@ -1,56 +1,35 @@
 package org.example;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.cdimascio.dotenv.Dotenv;
 import java.net.URI;
 import java.net.http.*;
 import java.util.*;
 
 public class LlmClient {
-
-    private static final String API_URL = "https://api.groq.com/openai/v1/chat/completions";
-    private static final String MODEL_NAME = "llama-3.3-70b-versatile";
-    private static final double TEMPERATURE = 0.2;
-
-    private final String apiKey;
+    private final String apiKey = AppConfig.getApiKey();
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public LlmClient() {
-        Dotenv dotenv = Dotenv.load();
-        this.apiKey = dotenv.get("LLM_API_KEY");
+    public Map<String, Object> ask(List<Map<String, String>> messages, List<Map<String, Object>> tools) throws Exception {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("model", AppConfig.MODEL_NAME);
+        payload.put("temperature", AppConfig.TEMPERATURE);
+        payload.put("messages", messages);
 
-
-        if (this.apiKey == null || this.apiKey.isBlank()) {
-            throw new AppException("API key 'LLM_API_KEY' is missing in .env file");
+        if (tools != null && !tools.isEmpty()) {
+            payload.put("tools", tools);
+            payload.put("tool_choice", "auto");
         }
-    }
 
-    public String ask(List<Map<String, String>> messages) {
-        try {
-            Map<String, Object> body = Map.of(
-                    "model", MODEL_NAME,
-                    "messages", messages,
-                    "temperature", TEMPERATURE
-            );
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload)))
+                .build();
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(API_URL))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
-                    .build();
-
-            HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (resp.statusCode() != 200) {
-                throw new AppException("LLM API request failed with status: " + resp.statusCode());
-            }
-
-            return mapper.readTree(resp.body()).path("choices").get(0).path("message").path("content").asText();
-        } catch (Exception e) {
-
-            throw new AppException("Failed to communicate with AI Service", e);
-        }
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        var node = mapper.readTree(response.body());
+        return mapper.convertValue(node.path("choices").get(0).path("message"), Map.class);
     }
 }

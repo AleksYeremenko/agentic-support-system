@@ -1,71 +1,88 @@
 package org.example;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.example.agents.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.*;
-import java.util.regex.*;
 
 public class SupportOrchestrator {
-    private static final Logger logger = LoggerFactory.getLogger(SupportOrchestrator.class);
     private final LlmClient client;
     private final KnowledgeBase kb;
-    private final TicketService tickets;
-    private final List<Map<String, String>> history = new ArrayList<>();
+    private final TicketService ticketService;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    private static final Pattern TOOL_PATTERN = Pattern.compile("\\[([A-Z_]+):\\s*([^\\]]+)\\]");
-
-    public SupportOrchestrator(LlmClient client, KnowledgeBase kb, TicketService tickets) {
+    public SupportOrchestrator(LlmClient client, KnowledgeBase kb, TicketService ticketService) {
         this.client = client;
         this.kb = kb;
-        this.tickets = tickets;
+        this.ticketService = ticketService;
     }
 
-    public String processQuery(String userQuery) throws Exception {
-        String context = kb.findContext(userQuery);
+    public String processQuery(String query, List<Map<String, String>> chatHistory) throws Exception {
+        List<Map<String, String>> limitedHistory = chatHistory.size() > AppConfig.MAX_HISTORY_WINDOW
+                ? chatHistory.subList(chatHistory.size() - AppConfig.MAX_HISTORY_WINDOW, chatHistory.size())
+                : chatHistory;
 
-        String systemPrompt = "You are a professional support system. Route to " + AppConfig.AGENT_A_TAG + " or " + AppConfig.AGENT_B_TAG + ".\n\n" +
-                AppConfig.AGENT_A_TAG + " (Tech): Use context [" + (context.isEmpty() ? "No docs" : context) + "].\n" +
-                "If info is missing, say you don't know. Greetings (Hi/Hello) are allowed.\n\n" +
-                AppConfig.AGENT_B_TAG + " (Billing): Tools: [GET_PLAN: Name], [CHECK_REFUND: YYYY-MM-DD], [CREATE_TICKET: Subj, Priority].\n\n" +
-                "Start response with the agent tag. Be professional.";
+        String context = kb.findRelevantContext(query);
 
-        history.add(Map.of("role", "user", "content", userQuery));
+        boolean isBilling = query.toLowerCase().matches(".*(price|refund|bill|plan|money|pay|cost).*");
+        Agent agent = isBilling ? new BillingAgent() : new TechnicalAgent(context);
 
-        while (history.size() > AppConfig.MAX_HISTORY_WINDOW) {
-            history.remove(0);
-        }
+        String tag = isBilling ? AppConfig.AGENT_B_TAG : AppConfig.AGENT_A_TAG;
 
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", systemPrompt));
-        messages.addAll(history);
+        messages.add(Map.of("role", "system", "content", agent.getSystemInstructions()));
+        messages.addAll(limitedHistory);
+        messages.add(Map.of("role", "user", "content", query));
 
-        String rawResponse = client.ask(messages);
-        handleTools(rawResponse);
+        Map<String, Object> response = client.ask(messages, agent.getToolDefinitions());
 
-        String finalResponse = sanitizeResponse(rawResponse);
-        history.add(Map.of("role", "assistant", "content", finalResponse));
-        return finalResponse;
+        chatHistory.add(Map.of("role", "user", "content", query));
+
+        String aiText = (String) response.get("content");
+        String toolOutput = "";
+
+        if (response.containsKey("tool_calls") && response.get("tool_calls") != null) {
+            toolOutput = handleToolCalls((List<Map<String, Object>>) response.get("tool_calls"));
+        }
+
+        StringBuilder finalResponse = new StringBuilder();
+        if (aiText != null && !aiText.isBlank()) {
+            finalResponse.append(aiText);
+        }
+        if (!toolOutput.isEmpty()) {
+            if (finalResponse.length() > 0) finalResponse.append("\n");
+            finalResponse.append(toolOutput);
+        }
+
+        if (finalResponse.length() == 0) {
+            finalResponse.append("I've processed your request. Is there anything else I can help you with?");
+        }
+
+        String resultString = finalResponse.toString();
+        chatHistory.add(Map.of("role", "assistant", "content", resultString));
+
+        return tag + " " + resultString;
     }
 
-    private void handleTools(String text) {
-        Matcher matcher = TOOL_PATTERN.matcher(text);
-        while (matcher.find()) {
-            String command = matcher.group(1);
-            String[] args = matcher.group(2).split(",");
-            try {
-                switch (command) {
-                    case "GET_PLAN" -> tickets.getPlanInfo(args[0]);
-                    case "CHECK_REFUND" -> tickets.checkRefund(args[0]);
-                    case "CREATE_TICKET" -> tickets.createTicket(args[0], args.length > 1 ? args[1].trim() : "Medium");
-                    default -> logger.warn("Unknown tool called: {}", command);
-                }
-            } catch (Exception e) {
-                logger.error("Tool execution failed for: {}", command, e);
+    private String handleToolCalls(List<Map<String, Object>> toolCalls) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> call : toolCalls) {
+            Map<String, Object> func = (Map<String, Object>) call.get("function");
+            String name = (String) func.get("name");
+            String argumentsJson = (String) func.get("arguments");
+
+            Map<String, String> args = mapper.readValue(argumentsJson, Map.class);
+
+            if ("get_plan_info".equals(name)) {
+                sb.append("\n[SYSTEM]: ").append(ticketService.getPlanInfo(args.get("plan")));
+            }
+            else if (name.contains("refund")) {
+                sb.append("\n[SYSTEM]: ").append(ticketService.checkRefund(args.get("date")));
+            }
+            else if ("create_ticket".equals(name) || "create_support_ticket".equals(name)) {
+                ticketService.createTicket(args.get("subject"), args.get("priority"));
+                sb.append("\n[SYSTEM]: Support ticket created successfully. Subject: ").append(args.get("subject"));
             }
         }
-    }
-
-    private String sanitizeResponse(String response) {
-        return response.replaceAll("\\[[A-Z_]+:.*?\\]", "").trim();
+        return sb.toString().trim();
     }
 }
