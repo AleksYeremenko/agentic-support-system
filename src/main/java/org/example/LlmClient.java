@@ -3,6 +3,7 @@ package org.example;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.*;
+import java.time.LocalDate;
 import java.util.*;
 
 public class LlmClient {
@@ -21,15 +22,66 @@ public class LlmClient {
             payload.put("tool_choice", "auto");
         }
 
+        String jsonBody = mapper.writeValueAsString(payload);
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
                 .header("Authorization", "Bearer " + apiKey)
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload)))
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         var node = mapper.readTree(response.body());
+
+        if (node.has("error")) {
+            throw new RuntimeException("LLM API Error: " + node.get("error").toString());
+        }
+
         return mapper.convertValue(node.path("choices").get(0).path("message"), Map.class);
+    }
+
+    public String classifyIntent(String query) {
+        try {
+            String prompt = """
+                Classify the user query into exactly one category:
+                - TECHNICAL (bugs, errors, login, system issues)
+                - BILLING (price, cost, refund, plan, payment, dates relative to purchase, OR ANY MENTION OF 'Agent B')
+                - GENERAL (greetings, chitchat, questions about identity, memory, 'what is my name', 'hello')
+                - UNKNOWN (weather, cooking, nonsense, completely unrelated topics)
+                
+                Query: "%s"
+                
+                Return ONLY the category name.
+                """.formatted(query);
+
+            List<Map<String, String>> messages = List.of(Map.of("role", "user", "content", prompt));
+            Map<String, Object> response = ask(messages, null);
+            String content = (String) response.get("content");
+            return content != null ? content.trim().toUpperCase() : "UNKNOWN";
+        } catch (Exception e) {
+            return "UNKNOWN";
+        }
+    }
+
+    public String generateNaturalResponse(String query, String systemOutput) {
+        try {
+            String today = LocalDate.now().toString();
+            String prompt = """
+                You are a helpful support assistant.
+                Current Date: %s
+                User Question: "%s"
+                System Data: "%s"
+                Task: Write a natural response.
+                1. Use System Data as the fact.
+                2. If user mentions relative time (e.g. "3 days ago"), CALCULATE the exact date using Current Date.
+                """.formatted(today, query, systemOutput);
+
+            List<Map<String, String>> messages = List.of(Map.of("role", "user", "content", prompt));
+            Map<String, Object> response = ask(messages, null);
+            return (String) response.get("content");
+        } catch (Exception e) {
+            return "System Data: " + systemOutput;
+        }
     }
 }
