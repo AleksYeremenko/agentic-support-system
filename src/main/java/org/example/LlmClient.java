@@ -45,7 +45,8 @@ public class LlmClient {
         try {
             String prompt = """
                 Classify the user query into exactly one category:
-                - TECHNICAL (bugs, errors, login, system issues)
+                
+                - TECHNICAL (bugs, errors, login, system issues, OR ANY MENTION OF 'Agent A')
                 - BILLING (price, cost, refund, plan, payment, dates relative to purchase, OR ANY MENTION OF 'Agent B')
                 - GENERAL (greetings, chitchat, questions about identity, memory, 'what is my name', 'hello')
                 - UNKNOWN (weather, cooking, nonsense, completely unrelated topics)
@@ -56,6 +57,7 @@ public class LlmClient {
                 """.formatted(query);
 
             List<Map<String, String>> messages = List.of(Map.of("role", "user", "content", prompt));
+
             Map<String, Object> response = ask(messages, null);
             String content = (String) response.get("content");
             return content != null ? content.trim().toUpperCase() : "UNKNOWN";
@@ -64,24 +66,34 @@ public class LlmClient {
         }
     }
 
-    public String generateNaturalResponse(String query, String systemOutput) {
+    public String generateNaturalResponse(String userQuery, String toolOutput) {
         try {
             String today = LocalDate.now().toString();
             String prompt = """
                 You are a helpful support assistant.
                 Current Date: %s
                 User Question: "%s"
-                System Data: "%s"
-                Task: Write a natural response.
-                1. Use System Data as the fact.
-                2. If user mentions relative time (e.g. "3 days ago"), CALCULATE the exact date using Current Date.
-                """.formatted(today, query, systemOutput);
+                
+                SYSTEM DATA (Tool Execution Result):
+                %s
+                
+                TASK:
+                Write a natural, helpful response to the user based STRICTLY on the System Data above.
+                - If the data says "Ticket created", confirm it politely with the ticket subject.
+                - If the data mentions a refund status, explain it clearly.
+                - Do NOT mention "JSON", "null", or internal code execution.
+                """.formatted(today, userQuery, toolOutput);
 
-            List<Map<String, String>> messages = List.of(Map.of("role", "user", "content", prompt));
+            List<Map<String, String>> messages = List.of(
+                    Map.of("role", "system", "content", "You are a helpful assistant."),
+                    Map.of("role", "user", "content", prompt)
+            );
+
+
             Map<String, Object> response = ask(messages, null);
             return (String) response.get("content");
         } catch (Exception e) {
-            return "System Data: " + systemOutput;
+            return "Action completed. Details: " + toolOutput;
         }
     }
 }

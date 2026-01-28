@@ -20,36 +20,39 @@ public class SupportOrchestrator {
         this.sessionManager = new ChatSessionManager();
     }
 
-
     public String processQuery(String userId, String query) throws Exception {
-      List<Map<String, String>> userHistory = sessionManager.getHistory(userId);
+        List<Map<String, String>> userHistory = sessionManager.getHistory(userId);
 
         String intent = client.classifyIntent(query);
         System.out.println("[DEBUG] Intent: " + intent);
 
-        String context = kb.findRelevantContext(query);
-
-        Agent agent;
+        Agent activeAgent;
         String tag;
 
         if (intent.contains("BILLING")) {
-            agent = new BillingAgent(context);
+            activeAgent = new BillingAgent(userId);
             tag = AppConfig.AGENT_B_TAG;
         }
-        else if (intent.contains("TECHNICAL") || intent.contains("GENERAL")) {
-            agent = new TechnicalAgent(context);
+        else if (intent.contains("TECHNICAL")) {
+            String context = kb.findRelevantContext(query);
+            activeAgent = new TechnicalAgent(context);
             tag = AppConfig.AGENT_A_TAG;
         }
         else {
-            return AppConfig.FALLBACK_RESPONSE;
+
+            String fallbackMsg = "I am specialized in Technical Support and Billing. Could you please clarify your request regarding these topics?";
+
+            sessionManager.addToHistory(userId, "user", query);
+            sessionManager.addToHistory(userId, "assistant", fallbackMsg);
+            return "[SYSTEM]: " + fallbackMsg;
         }
 
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", agent.getSystemInstructions()));
+        messages.add(Map.of("role", "system", "content", activeAgent.getSystemInstructions()));
         messages.addAll(userHistory);
         messages.add(Map.of("role", "user", "content", query));
 
-        Map<String, Object> response = client.ask(messages, agent.getToolDefinitions());
+        Map<String, Object> response = client.ask(messages, activeAgent.getToolDefinitions());
 
         sessionManager.addToHistory(userId, "user", query);
 
@@ -57,28 +60,25 @@ public class SupportOrchestrator {
 
         if (response.containsKey("tool_calls")) {
             List<Map<String, Object>> toolCalls = (List<Map<String, Object>>) response.get("tool_calls");
+
             String rawToolOutput = executeTools(toolCalls);
+
             finalResponseText = client.generateNaturalResponse(query, rawToolOutput);
         } else {
             finalResponseText = (String) response.get("content");
         }
 
         sessionManager.addToHistory(userId, "assistant", finalResponseText);
-
         return tag + " " + finalResponseText;
     }
 
     public void logFeedback(String query, String response, boolean isPositive) {
         if (isPositive) return;
-
         String logEntry = String.format("[%s] NEGATIVE FEEDBACK\nQuery: %s\nResponse: %s\n----------------\n",
                 java.time.LocalDateTime.now(), query, response);
-
         try {
             Files.writeString(Paths.get("data/feedback_log.txt"), logEntry, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        } catch (IOException e) { e.printStackTrace(); }
     }
 
     private String executeTools(List<Map<String, Object>> toolCalls) throws Exception {
@@ -93,7 +93,7 @@ public class SupportOrchestrator {
             else if ("check_refund_eligibility".equals(name)) sb.append(ticketService.checkRefund(args.get("date")));
             else if ("create_ticket".equals(name)) {
                 ticketService.createTicket(args.get("subject"), args.get("priority"));
-                sb.append("Ticket created: ").append(args.get("subject"));
+                sb.append("Ticket created successfully: ").append(args.get("subject"));
             }
         }
         return sb.toString();

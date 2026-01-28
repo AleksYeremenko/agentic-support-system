@@ -22,7 +22,6 @@ public class KnowledgeBase {
 
             Set<String> searchTerms = expandQuery(query.toLowerCase());
 
-            // Использование try-with-resources исправляет предупреждение IDE
             try (Stream<Path> paths = Files.walk(docsPath)) {
                 return paths
                         .filter(Files::isRegularFile)

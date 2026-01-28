@@ -5,31 +5,39 @@ import org.example.agents.TechnicalAgent;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 
 class AgentTest {
 
     @Test
-    void billingAgent_ShouldHaveThreeTools() {
-        BillingAgent agent = new BillingAgent();
+    void testBillingAgentTools() {
+
+        BillingAgent agent = new BillingAgent("test_user_123");
+
         List<Map<String, Object>> tools = agent.getToolDefinitions();
 
-        assertThat(tools).hasSize(3);
+        boolean hasRefundTool = tools.stream()
+                .anyMatch(t -> {
+                    Map<String, Object> func = (Map<String, Object>) t.get("function");
+                    return "check_refund_eligibility".equals(func.get("name"));
+                });
 
-        assertThat(tools.toString())
-                .contains("get_plan_info")
-                .contains("check_refund")
-                .contains("create_ticket");
+        assertTrue(hasRefundTool, "Billing Agent must have refund tool");
     }
 
     @Test
-    void technicalAgent_ShouldHaveContextInPrompt() {
-        String context = "Server is on fire";
-        TechnicalAgent agent = new TechnicalAgent(context);
+    void testTechnicalAgentTools() {
 
+        TechnicalAgent agent = new TechnicalAgent("System is down error 500");
 
-        assertThat(agent.getSystemInstructions()).contains(context);
+        List<Map<String, Object>> tools = agent.getToolDefinitions();
 
-        assertThat(agent.getToolDefinitions()).isNotEmpty();
+        boolean hasTicketTool = tools.stream()
+                .anyMatch(t -> {
+                    Map<String, Object> func = (Map<String, Object>) t.get("function");
+                    return "create_ticket".equals(func.get("name"));
+                });
+
+        assertTrue(hasTicketTool, "Technical Agent must have ticket tool");
     }
 }

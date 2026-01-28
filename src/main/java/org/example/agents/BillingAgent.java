@@ -1,13 +1,16 @@
 package org.example.agents;
 
+import org.example.ToolRegistry;
 import java.time.LocalDate;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
 public class BillingAgent implements Agent {
-    private final String context;
+    private final String userId;
 
-    public BillingAgent(String context) { this.context = context; }
-    public BillingAgent() { this.context = ""; }
+    public BillingAgent(String userId) {
+        this.userId = userId;
+    }
 
     @Override
     public String getName() { return "Billing Specialist"; }
@@ -15,40 +18,19 @@ public class BillingAgent implements Agent {
     @Override
     public String getSystemInstructions() {
         String currentDate = LocalDate.now().toString();
-
-        return "You are AGENT B, a Billing Specialist for InkSoftware.\n" +
+        return "You are AGENT B, a Billing Specialist.\n" +
                 "CURRENT DATE: " + currentDate + "\n" +
-                "Context from Knowledge Base: [" + context + "].\n\n" +
-
+                "User ID: " + userId + "\n\n" +
                 "GOALS:\n" +
-                "1. Answer questions about prices, plans, refunds, and payments.\n" +
-                "2. Calculate dates relative to CURRENT DATE (e.g., if user says '3 days ago', calculate the exact date).\n" +
-                "3. Check Chat History if asked about user identity.\n\n" +
-
-                "KNOWLEDGE STRATEGY (HYBRID RAG):\n" +
-                "1. FIRST, check the [Context] provided above for specific company prices or policies. If found, use it.\n" +
-                "2. SECOND, if the [Context] is missing specific details, USE YOUR GENERAL FINANCIAL KNOWLEDGE.\n" +
-                "   - Example: If the user asks 'What is VAT?' or 'How do refunds work generally?' and it's not in docs, explain the concept.\n" +
-                "   - Add a disclaimer: 'Note: This is general billing information, as no specific internal policy was found.'\n\n" +
-
+                "1. Answer questions about prices, plans, refunds.\n" +
+                "2. Calculate dates relative to CURRENT DATE.\n" +
                 "STRICT BOUNDARIES:\n" +
-                "- DO NOT answer non-billing questions (e.g., cooking, coding bugs, history).\n" +
-                "- If asked about technical bugs, suggest asking the Technical Team (Agent A).\n" +
-                "- Use 'check_refund_eligibility' only if a date is provided or calculated.";
+                "- DO NOT answer technical questions.\n" +
+                "- Use 'check_refund_eligibility' only if a date is provided.";
     }
 
     @Override
     public List<Map<String, Object>> getToolDefinitions() {
-        return List.of(
-                Map.of("type", "function", "function", Map.of(
-                        "name", "get_plan_info", "description", "Get pricing",
-                        "parameters", Map.of("type", "object", "properties", Map.of("plan", Map.of("type", "string"))))),
-                Map.of("type", "function", "function", Map.of(
-                        "name", "check_refund_eligibility", "description", "Check refund YYYY-MM-DD",
-                        "parameters", Map.of("type", "object", "properties", Map.of("date", Map.of("type", "string"))))),
-                Map.of("type", "function", "function", Map.of(
-                        "name", "create_ticket", "description", "Create billing ticket",
-                        "parameters", Map.of("type", "object", "properties", Map.of("subject", Map.of("type", "string"), "priority", Map.of("type", "string")))))
-        );
+        return List.of(ToolRegistry.GET_PLAN_INFO, ToolRegistry.CHECK_REFUND);
     }
 }
